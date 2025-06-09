@@ -32,6 +32,12 @@ namespace MVCIntegrationKit.Controllers
             ViewBag.indent = id;
             return View();
         }
+        public ActionResult mlzsPayment(string id)
+        {
+
+            ViewBag.indent = id;
+            return View();
+        }
         [HttpPost]
         public void ZllPayment(FormCollection form)
         {
@@ -94,6 +100,76 @@ namespace MVCIntegrationKit.Controllers
                 //string hashString = key + "|" + txnid + "|" + amount + "|" + productInfo + "|" + firstName + "|" + email + "|" + identa + "||||||||||" + salt;
                 string hashString = key + "|" + txnid + "|" + amount + "|" + productInfo + "|" + firstName + "|" + email + "|" + payment_nature + "|"+ Created_By + "|"+ Location + "||||||||" + salt;
                 string hash = Generatehash512(hashString);
+                UpdateHashCode(hash, txnid, amount);
+                myremotepost.Add("hash", hash);
+                myremotepost.Post();
+            }
+            catch (Exception ex)
+            {
+
+
+
+
+            }
+
+        }
+
+        [HttpPost]
+        public void mlzsPayment(FormCollection form)
+        {
+            try
+            {
+                var identa = form["indent"].ToString();
+                var data = "{Indent_Id :" + identa + "}";
+                DataTable dt = obj.GetDataSet("pr_CreateOnlinePaymentHistoryByIndentId", data, "MLZSconnectionstring").Tables[0];
+                string firstName = dt.Rows[0]["Franchisee_Name"].ToString();
+                string amount = dt.Rows[0]["Indent_Amount"].ToString();
+                string productInfo = dt.Rows[0]["Indent_Type"].ToString();
+                string email = dt.Rows[0]["Email_Id"].ToString();
+                string phone = dt.Rows[0]["Mobile_No"].ToString();
+                string surl = ConfigurationManager.AppSettings["PAYU_mlzsreturn_URL"].ToString();
+                string furl = ConfigurationManager.AppSettings["PAYU_mlzsreturn_URL"].ToString();
+                //RemotePost myremotepost = new RemotePost();
+                string key = ConfigurationManager.AppSettings["mlzs_MERCHANT_KEY"].ToString();
+                string salt = ConfigurationManager.AppSettings["mlzs_SALT"].ToString();
+                ////posting all the parameters required for integration.
+                //myremotepost.Url = ConfigurationManager.AppSettings["PAYU_BASE_URL"].ToString();
+                //myremotepost.Add("key", key);
+                string txnid = dt.Rows[0]["TXN_ID"].ToString();// Generatetxnid();
+                //myremotepost.Add("txnid", txnid);
+                //myremotepost.Add("amount", amount);
+                //myremotepost.Add("productinfo", productInfo);
+                //myremotepost.Add("firstname", firstName);
+                //myremotepost.Add("phone", phone);
+                //myremotepost.Add("email", email);
+                //myremotepost.Add("surl", surl);//Change the success url here depending upon the port number of your local system.
+                //myremotepost.Add("furl", furl);//Change the failure url here depending upon the port number of your local system.
+                //myremotepost.Add("service_provider", "payu_paisa");
+                //myremotepost.Add("udf1", identa);
+
+                //string hashString = key + "|" + txnid + "|" + amount + "|" + productInfo + "|" + firstName + "|" + email + "|" + identa + "||||||||||" + salt;
+                //// string hashString = key + "|" + txnid + "|" + amount + "|" + productInfo + "|" + firstName + "|" + email + "|" + txnid + "|" + txnid + "|" + txnid + "|" + txnid + "|" + txnid + " ||||||" + salt;
+                //string hash = Generatehash512(hashString);
+                //myremotepost.Add("hash", hash);
+                //myremotepost.Post();
+                RemotePost myremotepost = new RemotePost();
+
+                myremotepost.Url = ConfigurationManager.AppSettings["PAYU_BASE_URL"];
+                myremotepost.Add("key", key);
+                myremotepost.Add("txnid", txnid);
+                myremotepost.Add("amount", amount);
+                myremotepost.Add("productinfo", productInfo);
+                myremotepost.Add("firstname", firstName);
+                myremotepost.Add("phone", phone);
+                myremotepost.Add("email", email);
+                myremotepost.Add("surl", ConfigurationManager.AppSettings["PAYU_mlzsreturn_URL"]);//Change the success url here depending upon the port number of your local system.  
+                myremotepost.Add("furl", ConfigurationManager.AppSettings["PAYU_mlzsreturn_URL"]);//Change the failure url here depending upon the port number of your local system.  
+                myremotepost.Add("service_provider", "payu_paisa");
+                myremotepost.Add("udf1", identa);
+                //ConfigurationManager.AppSettings["hashSequence"];//
+                string hashString = key + "|" + txnid + "|" + amount + "|" + productInfo + "|" + firstName + "|" + email + "|" + identa + "||||||||||" + salt;
+                string hash = Generatehash512(hashString);
+                UpdateHashCodeEML(hash, txnid, amount);
                 myremotepost.Add("hash", hash);
                 myremotepost.Post();
             }
@@ -241,6 +317,18 @@ namespace MVCIntegrationKit.Controllers
 
         public ActionResult PaymentLink() {
             return View();
+        }
+
+        private void UpdateHashCode(string vhashString, string vTXN_ID, string vIndent_Amount)
+        {
+            string data = "{'TXN_ID':'" + vTXN_ID + "','HashCode':'" + vhashString + "','Indent_Amount':" + vIndent_Amount + "}";
+            string result = obj.SaveJson("pr_UpdateOnlinePaymentHashCode", data, "BPMSconnectionstring");
+        }
+
+        private void UpdateHashCodeEML(string vhashString, string vTXN_ID, string vIndent_Amount)
+        {
+            string data = "{'TXN_ID':'" + vTXN_ID + "','HashCode':'" + vhashString + "','Indent_Amount':" + vIndent_Amount + "}";
+            string result = obj.SaveJson("pr_UpdateOnlinePaymentHashCode", data, "MLZSconnectionstring");
         }
 
 

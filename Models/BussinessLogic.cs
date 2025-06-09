@@ -1966,6 +1966,56 @@ namespace MVCIntegrationKit.Models
                 }
             }
         }
+
+        public string SaveJson(string proc, string json,string connection)
+        {
+            using (SqlConnection conn = new SqlConnection(ConfigurationManager.ConnectionStrings[connection].ConnectionString))
+            //using (SqlConnection con = conn.sqlCon("connectionstring"))
+            {
+                conn.Open();
+                SqlCommand sqlComm = new SqlCommand(proc, conn);
+                XmlDocument xml = new XmlDocument();
+                XmlDocument doc = new XmlDocument();
+                sqlComm.CommandType = CommandType.StoredProcedure;
+                if (json != "" && json != null)
+                {
+                    var dict = JsonConvert.DeserializeObject<Dictionary<string, string>>(json);
+                    foreach (var kv in dict)
+                    {
+                        if (kv.Key == "xml")
+                        {
+                            xml = (XmlDocument)JsonConvert.DeserializeXmlNode(kv.Value);
+                            sqlComm.Parameters.AddWithValue("@xml", xml.InnerXml.ToString());
+                        }
+                        else
+                        {
+                            sqlComm.Parameters.AddWithValue("@" + kv.Key, kv.Value);
+                        }
+                    }
+                }
+                int i = 0;
+                i = sqlComm.ExecuteNonQuery();
+                conn.Close();
+                try
+                {
+                    if (i > 0)
+                    {
+                        // return ("{'status':'1'}");
+                        return "status1";
+
+                    }
+                    else
+                    {
+                        return ("{'status':'0'}");
+                    }
+                }
+                catch
+                {
+
+                    return ("{'status':'0'}");
+                }
+            }
+        }
         public string GetDataXmltoJson(string proc, string json, string connection)
         {
             DataSet ds = new DataSet("data1");

@@ -135,8 +135,8 @@ D:\DJ\ZLL Projects\PayUmoney\PayUMoneyASP.Net-MVC-Framework-master\MVCIntegratio
 D:\DJ\ZLL Projects\PayUmoney\PayUMoneyASP.Net-MVC-Framework-master\MVCIntegrationKit\bin\System.Web.WebPages.xml
 D:\DJ\ZLL Projects\PayUmoney\PayUMoneyASP.Net-MVC-Framework-master\MVCIntegrationKit\bin\System.Web.WebPages.Deployment.xml
 D:\DJ\ZLL Projects\PayUmoney\PayUMoneyASP.Net-MVC-Framework-master\MVCIntegrationKit\bin\System.Web.WebPages.Razor.xml
-D:\DJ\ZLL Projects\PayUmoney\PayUMoneyASP.Net-MVC-Framework-master\MVCIntegrationKit\obj\Debug\MVCIntegrationKit.csproj.AssemblyReference.cache
 D:\DJ\ZLL Projects\PayUmoney\PayUMoneyASP.Net-MVC-Framework-master\MVCIntegrationKit\obj\Debug\MVCIntegrationKit.csproj.CoreCompileInputs.cache
 D:\DJ\ZLL Projects\PayUmoney\PayUMoneyASP.Net-MVC-Framework-master\MVCIntegrationKit\obj\Debug\MVCIntegrationKit.csproj.CopyComplete
 D:\DJ\ZLL Projects\PayUmoney\PayUMoneyASP.Net-MVC-Framework-master\MVCIntegrationKit\obj\Debug\MVCIntegrationKit.dll
 D:\DJ\ZLL Projects\PayUmoney\PayUMoneyASP.Net-MVC-Framework-master\MVCIntegrationKit\obj\Debug\MVCIntegrationKit.pdb
+D:\DJ\ZLL Projects\PayUmoney\PayUMoneyASP.Net-MVC-Framework-master\MVCIntegrationKit\obj\Debug\MVCIntegrationKit.csproj.AssemblyReference.cache
