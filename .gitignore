@@ -94,3 +94,9 @@ yarn-error.log
 .env.*
 
 *.csproj.user
+
+bin/
+Debug/
+Release/
+*.csproj
+obj/

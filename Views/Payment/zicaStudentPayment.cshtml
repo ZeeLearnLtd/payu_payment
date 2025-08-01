@@ -1,8 +1,6 @@
 ﻿@model MVCIntegrationKit.Models.PaymentModel
 
-@{
-    ViewBag.Title = "Payment Zeelearn";
-}
+@{ ViewBag.Title = "Payment Zeelearn"; }
 
 <h2>Payment Zeelearn</h2>
 <script src="https://code.jquery.com/jquery-2.2.4.min.js"
@@ -12,14 +10,11 @@
 {
 <div style="margin-left:20px;display:none">
     @Html.HiddenFor(m => m.indent, new { Value = ViewBag.indent })
-    
+
 
     <button id="PayFormSubmit" type="submit">Submit</button>
 </div>
-<script type="text/javascript">
-    $(document).ready(function () {
+                <script type="text/javascript">$(document).ready(function () {
         $("#PayFormSubmit").trigger('click');
-    });
-</script>
-
+    });</script>
 }
