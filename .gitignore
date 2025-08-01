@@ -99,3 +99,4 @@ bin/
 Debug/
 Release/
 *.csproj
+obj/
