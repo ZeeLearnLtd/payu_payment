@@ -100,3 +100,4 @@ Debug/
 Release/
 *.csproj
 obj/
+Properties/
