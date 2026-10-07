@@ -131,7 +131,6 @@
             color: #721c24;
         }
 
-        /* PAYU_TOGGLE: Keep badge-payu for old PayU records in list */
         .badge-payu {
             background: #e8f5e9;
             color: #2e7d32;
@@ -157,6 +156,13 @@
                 background: var(--primary);
                 color: #fff;
             }
+
+        /* ── Link Pending label in table ─────────────────────────────── */
+        .link-pending {
+            color: #999;
+            font-size: 11px;
+            font-style: italic;
+        }
 
         .btn-create {
             background: var(--primary);
@@ -201,10 +207,6 @@
                 margin-bottom: 14px;
             }
 
-        /* ═══════════════════════════════════════════════════════════════════
-           PAYU_TOGGLE: Gateway toggle CSS — kept for future use
-           Uncomment the gateway-toggle HTML in the modal to re-enable
-        ═══════════════════════════════════════════════════════════════════ */
         .gateway-toggle {
             display: flex;
             border: 2px solid var(--border-color);
@@ -272,6 +274,53 @@
 
         select.form-control {
             appearance: auto;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════
+           API FIELD-LEVEL ERROR STYLES
+        ═══════════════════════════════════════════════════════════════════ */
+        .api-error-banner {
+            background: #fff5f5;
+            border: 1px solid #fed7d7;
+            border-left: 4px solid var(--danger);
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+            .api-error-banner i {
+                color: var(--danger);
+                margin-top: 2px;
+                flex-shrink: 0;
+            }
+
+            .api-error-banner .error-text {
+                font-size: 13px;
+                color: #c53030;
+                line-height: 1.5;
+                white-space: pre-line;
+            }
+
+        .field-error-msg {
+            color: var(--danger);
+            font-size: 11px;
+            margin-top: 3px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+            .field-error-msg i {
+                font-size: 10px;
+            }
+
+        /* Highlight input border when API returns error for that field */
+        .has-api-error {
+            border-color: var(--danger) !important;
+            box-shadow: 0 0 0 3px rgba(230, 57, 70, 0.12) !important;
         }
 
         .easebuzz-section {
@@ -434,8 +483,7 @@
                                 <td>{{c.customer_mobile}}</td>
                                 <td style="font-weight:600;">&#8377;{{c.Indent_Amount}}</td>
                                 <td>
-                                    <!-- Gateway badge kept for old PayU records -->
-                                    <span class="badge-status" ng-class="c.gateway === 'Easebuzz' ? 'badge-easebuzz' : 'badge-payu'">
+                                    <span class="badge-status" ng-class="c.gateway === 'Easebuzz' ? 'badge-easebuzz' : (c.gateway === 'PayU' ? 'badge-payu' : 'badge-pending')">
                                         {{c.gateway}}
                                     </span>
                                 </td>
@@ -448,9 +496,14 @@
                                     </span>
                                 </td>
                                 <td>
-                                    <button class="btn-copy" ng-click="copyToClipboard(c.link)">
+                                    <!-- ── Show Copy button ONLY if link exists ── -->
+                                    <button class="btn-copy" ng-click="copyToClipboard(c.link)" ng-if="c.link">
                                         <i class="far fa-copy"></i> Copy
                                     </button>
+                                    <!-- ── Show "Link Pending" if no link yet ── -->
+                                    <span class="link-pending" ng-if="!c.link">
+                                        <i class="fas fa-hourglass-half"></i> Link Pending
+                                    </span>
                                 </td>
                             </tr>
                         </tbody>
@@ -476,117 +529,159 @@
                         </div>
                         <div class="modal-body">
 
-                            <!-- ═══════════════════════════════════════════════════════════
-                                 PAYU_TOGGLE: Gateway Toggle — COMMENTED OUT (Easebuzz only)
-                                 Uncomment this block to show PayU / Easebuzz radio toggle
-                            ════════════════════════════════════════════════════════════ -->
-                            <!--
-                            <div class="gateway-toggle">
-                                <input type="radio" name="gateway" id="gw_payu" value="payu" ng-model="paymentGateway">
-                                <label for="gw_payu"><i class="fas fa-university"></i>PayU</label>
-                                <div class="gw-divider"></div>
-                                <input type="radio" name="gateway" id="gw_easebuzz" value="easebuzz" ng-model="paymentGateway">
-                                <label for="gw_easebuzz"><i class="fas fa-bolt"></i>Easebuzz</label>
+                            <!-- ═══════════════════════════════════════════════
+                                 API ERROR BANNER — shows when Easebuzz returns errors
+                            ════════════════════════════════════════════════ -->
+                            <div class="api-error-banner" ng-if="apiErrorMessage">
+                                <i class="fas fa-exclamation-circle"></i>
+                                <div class="error-text">{{apiErrorMessage}}</div>
                             </div>
-                            -->
 
+                            <!-- Customer Name -->
                             <div class="form-group">
                                 <div class="form-label-sm"><span class="req">*</span> Customer Name</div>
                                 <input name="customer_name" class="form-control" type="text" placeholder="Enter full name"
-                                       ng-model="PaymentLinkObj.customer_name" required>
+                                       ng-model="PaymentLinkObj.customer_name" required
+                                       ng-class="{'has-api-error': fieldErrors.customer_name}"
+                                       ng-change="clearFieldError('customer_name')">
+                                <div class="field-error-msg" ng-if="fieldErrors.customer_name">
+                                    <i class="fas fa-exclamation-circle"></i> {{fieldErrors.customer_name}}
+                                </div>
                             </div>
+
                             <div class="row">
+                                <!-- Mobile Number -->
                                 <div class="col-md-6 form-group">
                                     <div class="form-label-sm"><span class="req">*</span> Mobile Number</div>
                                     <input name="customer_mobile" class="form-control" type="tel" placeholder="10-digit mobile"
                                            ng-pattern="/^[6-9][0-9]{9}$/" ng-model="PaymentLinkObj.customer_mobile"
                                            maxlength="10" ng-minlength="10" ng-maxlength="10" required
                                            onkeypress="return (event.charCode >= 48 && event.charCode <= 57)"
-                                           style="{{myForm.customer_mobile.$touched && myForm.customer_mobile.$invalid ? 'border-color:#e63946;' : ''}}">
+                                           ng-class="{'has-api-error': fieldErrors.customer_mobile}"
+                                           ng-change="clearFieldError('customer_mobile')"
+                                           style="{{myForm.customer_mobile.$touched && myForm.customer_mobile.$invalid && !fieldErrors.customer_mobile ? 'border-color:#e63946;' : ''}}">
+                                    <!-- Angular validation errors -->
                                     <small style="color:#e63946;font-size:11px;"
-                                           ng-show="myForm.customer_mobile.$touched && myForm.customer_mobile.$invalid">
+                                           ng-show="myForm.customer_mobile.$touched && myForm.customer_mobile.$invalid && !fieldErrors.customer_mobile">
                                         <span ng-show="myForm.customer_mobile.$error.required">Mobile number is required</span>
                                         <span ng-show="myForm.customer_mobile.$error.minlength || myForm.customer_mobile.$error.maxlength">Must be exactly 10 digits</span>
                                         <span ng-show="myForm.customer_mobile.$error.pattern && !myForm.customer_mobile.$error.minlength">Must start with 6, 7, 8 or 9</span>
                                     </small>
+                                    <!-- API validation error -->
+                                    <div class="field-error-msg" ng-if="fieldErrors.customer_mobile">
+                                        <i class="fas fa-exclamation-circle"></i> {{fieldErrors.customer_mobile}}
+                                    </div>
                                 </div>
+
+                                <!-- Email -->
                                 <div class="col-md-6 form-group">
                                     <div class="form-label-sm"><span class="req">*</span> Email</div>
                                     <input name="customer_email" class="form-control" type="email" placeholder="email@example.com"
-                                           ng-model="PaymentLinkObj.customer_email" required>
+                                           ng-model="PaymentLinkObj.customer_email" required
+                                           ng-class="{'has-api-error': fieldErrors.customer_email}"
+                                           ng-change="clearFieldError('customer_email')">
+                                    <div class="field-error-msg" ng-if="fieldErrors.customer_email">
+                                        <i class="fas fa-exclamation-circle"></i> {{fieldErrors.customer_email}}
+                                    </div>
                                 </div>
                             </div>
+
                             <div class="row">
+                                <!-- State -->
                                 <div class="col-md-6 form-group">
                                     <div class="form-label-sm"><span class="req">*</span> State</div>
                                     <select name="state" class="form-control" ng-model="PaymentLinkObj.state"
-                                            ng-options="s.state_name as s.state_name for s in StateList" required>
+                                            ng-options="s.state_name as s.state_name for s in StateList" required
+                                            ng-class="{'has-api-error': fieldErrors.state}"
+                                            ng-change="clearFieldError('state')">
                                         <option value="">Select State</option>
                                     </select>
+                                    <div class="field-error-msg" ng-if="fieldErrors.state">
+                                        <i class="fas fa-exclamation-circle"></i> {{fieldErrors.state}}
+                                    </div>
                                 </div>
+
+                                <!-- City / Location -->
                                 <div class="col-md-6 form-group">
                                     <div class="form-label-sm"><span class="req">*</span> City / Location</div>
                                     <input name="location" class="form-control" type="text" placeholder="Enter city"
-                                           ng-model="PaymentLinkObj.location" required>
+                                           ng-model="PaymentLinkObj.location" required
+                                           ng-class="{'has-api-error': fieldErrors.location}"
+                                           ng-change="clearFieldError('location')">
+                                    <div class="field-error-msg" ng-if="fieldErrors.location">
+                                        <i class="fas fa-exclamation-circle"></i> {{fieldErrors.location}}
+                                    </div>
                                 </div>
                             </div>
+
                             <div class="row">
+                                <!-- Amount -->
                                 <div class="col-md-6 form-group">
                                     <div class="form-label-sm"><span class="req">*</span> Amount (&#8377;)</div>
                                     <input name="indent_amount" class="form-control" type="number" placeholder="0.00" min="1"
-                                           ng-model="PaymentLinkObj.indent_amount" required>
+                                           ng-model="PaymentLinkObj.indent_amount" required
+                                           ng-class="{'has-api-error': fieldErrors.indent_amount}"
+                                           ng-change="clearFieldError('indent_amount')">
+                                    <div class="field-error-msg" ng-if="fieldErrors.indent_amount">
+                                        <i class="fas fa-exclamation-circle"></i> {{fieldErrors.indent_amount}}
+                                    </div>
                                 </div>
+
+                                <!-- Nature of Payment -->
                                 <div class="col-md-6 form-group">
                                     <div class="form-label-sm"><span class="req">*</span> Nature of Payment</div>
                                     <select name="paymentType" class="form-control" ng-model="PaymentLinkObj.paymentType"
-                                            ng-options="p.lookup_code as p.lookup_name for p in PaymentNature" required>
+                                            ng-options="p.lookup_code as p.lookup_name for p in PaymentNature" required
+                                            ng-class="{'has-api-error': fieldErrors.paymentType}"
+                                            ng-change="clearFieldError('paymentType')">
                                         <option value="">Select Type</option>
                                     </select>
+                                    <div class="field-error-msg" ng-if="fieldErrors.paymentType">
+                                        <i class="fas fa-exclamation-circle"></i> {{fieldErrors.paymentType}}
+                                    </div>
                                 </div>
                             </div>
+
+                            <!-- Remarks -->
                             <div class="form-group">
                                 <div class="form-label-sm">Remarks</div>
                                 <input class="form-control" type="text" placeholder="Optional remarks"
-                                       ng-model="PaymentLinkObj.remarks">
+                                       ng-model="PaymentLinkObj.remarks"
+                                       ng-class="{'has-api-error': fieldErrors.remarks}"
+                                       ng-change="clearFieldError('remarks')">
+                                <div class="field-error-msg" ng-if="fieldErrors.remarks">
+                                    <i class="fas fa-exclamation-circle"></i> {{fieldErrors.remarks}}
+                                </div>
                             </div>
 
-                            <!-- ── Easebuzz Settings (always visible now) ─────── -->
+                            <!-- ── Easebuzz Settings (always visible) ─────── -->
                             <div class="easebuzz-section">
                                 <div class="section-title"><i class="fas fa-bolt"></i> Easebuzz Settings</div>
                                 <div class="row">
+                                    <!-- Expiry Date -->
                                     <div class="col-md-6 form-group">
                                         <div class="form-label-sm"><span class="req">*</span> Expiry Date</div>
                                         <input class="form-control" type="text" placeholder="DD-MM-YYYY"
-                                               ng-model="ebExpiryDate" required>
+                                               ng-model="ebExpiryDate" required
+                                               ng-class="{'has-api-error': fieldErrors.ebExpiryDate}"
+                                               ng-change="clearFieldError('ebExpiryDate')">
+                                        <div class="field-error-msg" ng-if="fieldErrors.ebExpiryDate">
+                                            <i class="fas fa-exclamation-circle"></i> {{fieldErrors.ebExpiryDate}}
+                                        </div>
                                     </div>
+
+                                    <!-- Message -->
                                     <div class="col-md-6 form-group">
                                         <div class="form-label-sm"><span class="req">*</span> Message to Customer</div>
                                         <input class="form-control" type="text" placeholder="Payment link message"
-                                               ng-model="ebMessage" required>
+                                               ng-model="ebMessage" required
+                                               ng-class="{'has-api-error': fieldErrors.ebMessage}"
+                                               ng-change="clearFieldError('ebMessage')">
+                                        <div class="field-error-msg" ng-if="fieldErrors.ebMessage">
+                                            <i class="fas fa-exclamation-circle"></i> {{fieldErrors.ebMessage}}
+                                        </div>
                                     </div>
                                 </div>
-
-                                <!-- ═══════════════════════════════════════════════════════════
-                                     NOTIFICATION CHANNELS — COMMENTED OUT FOR NOW
-                                     Uncomment this block when notification UI is ready to use.
-                                     Backend always sends all 3 (SMS, Email, WhatsApp) by default.
-                                ════════════════════════════════════════════════════════════ -->
-                                <!--
-                                <div class="form-group" style="margin-bottom:0;">
-                                    <div class="form-label-sm">Send Notification Via</div>
-                                    <div style="display:flex;gap:16px;flex-wrap:wrap;">
-                                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
-                                            <input type="checkbox" ng-model="notifyChannels.sms" style="width:16px;height:16px;"> SMS
-                                        </label>
-                                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
-                                            <input type="checkbox" ng-model="notifyChannels.email" style="width:16px;height:16px;"> Email
-                                        </label>
-                                        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
-                                            <input type="checkbox" ng-model="notifyChannels.whatsapp" style="width:16px;height:16px;"> WhatsApp
-                                        </label>
-                                    </div>
-                                </div>
-                                -->
                             </div>
 
                             <div class="submit-area">
@@ -612,6 +707,6 @@
     <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/js/bootstrap.min.js"></script>
     <script src="https://unpkg.com/sweetalert/dist/sweetalert.min.js"></script>
-    <script src="~/Scripts/Payment/PaymentLink.js?v=7"></script>
+    <script src="~/Scripts/Payment/PaymentLink.js?v=10"></script>
 </body>
 </html>
