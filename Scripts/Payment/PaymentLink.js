@@ -4,7 +4,8 @@
 //  CONFIGURATION — Change when moving to production
 // ═══════════════════════════════════════════════════════════════════════════════
 var CONFIG = {
-    EASEBUZZ_API_URL: 'https://commonapi.zeelearn.com/easebuzz/api/payment/CreatePaymentLink',
+    EASEBUZZ_API_URL: 'https://kubapi.zeelearn.com/V1/easebuzzapi/api/payment/CreatePaymentLink',
+    //EASEBUZZ_API_URL: 'http://localhost:3002/api/payment/CreatePaymentLink',
     EASEBUZZ_TOKEN: 'PGK-a7B9x2Qm8dR4sW1n'
 };
 
@@ -28,6 +29,115 @@ function getDateString(daysFromNow) {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
+//  FIELD-LABEL & ERROR MAPPING HELPERS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var EASEBUZZ_FIELD_MAP = {
+    'name': 'customer_name',
+    'customer_name': 'customer_name',
+    'email': 'customer_email',
+    'customer_email': 'customer_email',
+    'phone': 'customer_mobile',
+    'mobile': 'customer_mobile',
+    'customer_mobile': 'customer_mobile',
+    'amount': 'indent_amount',
+    'indent_amount': 'indent_amount',
+    'message': 'ebMessage',
+    'expiry_date': 'ebExpiryDate',
+    'merchant_txn': 'merchant_txn',
+    'udf1': 'paymentType',
+    'udf3': 'location',
+    'udf4': 'state'
+};
+
+var FIELD_LABELS = {
+    'customer_name': 'Customer Name',
+    'customer_email': 'Email',
+    'customer_mobile': 'Mobile Number',
+    'indent_amount': 'Amount',
+    'state': 'State',
+    'location': 'City / Location',
+    'paymentType': 'Nature of Payment',
+    'ebMessage': 'Message to Customer',
+    'ebExpiryDate': 'Expiry Date',
+    'merchant_txn': 'Transaction ID',
+    'remarks': 'Remarks'
+};
+
+function mapEasebuzzField(apiField) {
+    return EASEBUZZ_FIELD_MAP[(apiField || '').toLowerCase()] || apiField;
+}
+
+function getFieldLabel(formField) {
+    return FIELD_LABELS[formField] || formField;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  ROBUST LINK EXTRACTION — tries every possible response path
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function extractPaymentLink(ebResp) {
+    try {
+        // Path 1: ebResp.data.payment_link (most common)
+        if (ebResp.data && ebResp.data.payment_link) return ebResp.data.payment_link;
+
+        // Path 2: ebResp.data.easebuzz_response.payment_url
+        if (ebResp.data && ebResp.data.easebuzz_response) {
+            var ebr = ebResp.data.easebuzz_response;
+            if (ebr.payment_url) return ebr.payment_url;
+            if (ebr.short_url) return ebr.short_url;
+            if (ebr.payment_link) return ebr.payment_link;
+        }
+
+        // Path 3: ebResp.payment_link (flat / unwrapped response)
+        if (ebResp.payment_link) return ebResp.payment_link;
+        if (ebResp.payment_url) return ebResp.payment_url;
+        if (ebResp.short_url) return ebResp.short_url;
+
+        // Path 4: ebResp.easebuzz_response (without .data wrapper)
+        if (ebResp.easebuzz_response) {
+            var ebr2 = ebResp.easebuzz_response;
+            if (ebr2.payment_url) return ebr2.payment_url;
+            if (ebr2.short_url) return ebr2.short_url;
+            if (ebr2.payment_link) return ebr2.payment_link;
+        }
+
+        // Path 5: ebResp.data is a string URL itself
+        if (ebResp.data && typeof ebResp.data === 'string' && ebResp.data.indexOf('http') === 0) {
+            return ebResp.data;
+        }
+
+        // Path 6: deep search — find first URL-like value anywhere in the response
+        var found = deepFindUrl(ebResp, 0);
+        if (found) return found;
+
+    } catch (e) {
+        console.error('[PaymentLink] Error extracting link from response:', e);
+    }
+    return '';
+}
+
+function deepFindUrl(obj, depth) {
+    if (depth > 3 || !obj || typeof obj !== 'object') return '';
+    var urlKeys = ['payment_link', 'payment_url', 'short_url', 'link', 'url'];
+    for (var i = 0; i < urlKeys.length; i++) {
+        var val = obj[urlKeys[i]];
+        if (val && typeof val === 'string' && val.indexOf('http') === 0) {
+            return val;
+        }
+    }
+    for (var key in obj) {
+        if (obj.hasOwnProperty(key) && typeof obj[key] === 'object' && obj[key] !== null) {
+            var found = deepFindUrl(obj[key], depth + 1);
+            if (found) return found;
+        }
+    }
+    return '';
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
 //  CONTROLLER
 // ═══════════════════════════════════════════════════════════════════════════════
 app.controller('PaymentLinkController', function ($scope, $http) {
@@ -36,10 +146,12 @@ app.controller('PaymentLinkController', function ($scope, $http) {
     $scope.isSubmitting = false;
     $scope.paymentLink = '';
 
-    // ── Gateway: Easebuzz only (PayU commented out) ──────────────────────
+    // ── Validation errors from Easebuzz API ─────────────────────────────
+    $scope.fieldErrors = {};
+    $scope.apiErrorMessage = '';
+
+    // ── Gateway: Easebuzz only ──────────────────────────────────────────
     $scope.paymentGateway = 'easebuzz';
-    // PAYU_TOGGLE: To enable PayU again, change above to 'payu' and
-    //              uncomment the gateway toggle UI in PaymentLink.cshtml
 
     $scope.uid = GetParameterValues('uid');
     $scope.txnsuffix = GetParameterValues('suffix');
@@ -52,9 +164,81 @@ app.controller('PaymentLinkController', function ($scope, $http) {
     $scope.ebExpiryDate = getDateString(30);
     $scope.ebMessage = 'Payment Link';
 
-    // ── Notification channels — hardcoded, UI is commented out for now ───
-    // When UI is enabled, these will be driven by checkboxes
-    // $scope.notifyChannels = { sms: true, email: true, whatsapp: true };
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  FIELD ERROR HELPERS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    $scope.clearFieldError = function (field) {
+        if ($scope.fieldErrors[field]) {
+            delete $scope.fieldErrors[field];
+        }
+        if (Object.keys($scope.fieldErrors).length === 0) {
+            $scope.apiErrorMessage = '';
+        }
+    };
+
+    function clearAllErrors() {
+        $scope.fieldErrors = {};
+        $scope.apiErrorMessage = '';
+    }
+
+    function parseAndSetErrors(ebResp) {
+        clearAllErrors();
+        var errorLines = [];
+
+        // Case 1: errors array with field + message
+        if (ebResp.errors && Array.isArray(ebResp.errors) && ebResp.errors.length > 0) {
+            for (var i = 0; i < ebResp.errors.length; i++) {
+                var err = ebResp.errors[i];
+                var formField = mapEasebuzzField(err.field || err.param || err.key || '');
+                var errMsg = err.message || err.msg || err.error || 'Invalid value';
+                if (formField) {
+                    $scope.fieldErrors[formField] = errMsg;
+                    errorLines.push(getFieldLabel(formField) + ': ' + errMsg);
+                } else {
+                    errorLines.push(errMsg);
+                }
+            }
+        }
+        // Case 2: error_data object { field: "message" }
+        else if (ebResp.error_data && typeof ebResp.error_data === 'object') {
+            var errorData = ebResp.error_data;
+            for (var key in errorData) {
+                if (errorData.hasOwnProperty(key)) {
+                    var formField2 = mapEasebuzzField(key);
+                    var errMsg2 = Array.isArray(errorData[key]) ? errorData[key].join(', ') : errorData[key];
+                    $scope.fieldErrors[formField2] = errMsg2;
+                    errorLines.push(getFieldLabel(formField2) + ': ' + errMsg2);
+                }
+            }
+        }
+        // Case 3: Just a message string
+        else if (ebResp.message || ebResp.msg || ebResp.error) {
+            var msg = ebResp.message || ebResp.msg || ebResp.error;
+            errorLines.push(msg);
+            var msgLower = (msg || '').toLowerCase();
+            if (msgLower.indexOf('name') > -1) {
+                $scope.fieldErrors['customer_name'] = msg;
+            } else if (msgLower.indexOf('email') > -1) {
+                $scope.fieldErrors['customer_email'] = msg;
+            } else if (msgLower.indexOf('phone') > -1 || msgLower.indexOf('mobile') > -1) {
+                $scope.fieldErrors['customer_mobile'] = msg;
+            } else if (msgLower.indexOf('amount') > -1) {
+                $scope.fieldErrors['indent_amount'] = msg;
+            } else if (msgLower.indexOf('expiry') > -1 || msgLower.indexOf('date') > -1) {
+                $scope.fieldErrors['ebExpiryDate'] = msg;
+            }
+        }
+
+        if (errorLines.length > 0) {
+            $scope.apiErrorMessage = errorLines.join('\n');
+        } else {
+            $scope.apiErrorMessage = 'Something went wrong. Please check your inputs and try again.';
+        }
+
+        return errorLines.join('\n') || $scope.apiErrorMessage;
+    }
 
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -79,6 +263,7 @@ app.controller('PaymentLinkController', function ($scope, $http) {
         $scope.disableCopy = true;
         $scope.paymentLink = '';
         $scope.isSubmitting = false;
+        clearAllErrors();
         if ($scope.myForm) {
             $scope.myForm.$setPristine();
             $scope.myForm.$setUntouched();
@@ -96,7 +281,6 @@ app.controller('PaymentLinkController', function ($scope, $http) {
             return;
         }
 
-        // Modern clipboard API (works in modals)
         if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(textToCopy).then(function () {
                 swal({ title: 'Copied!', text: 'Payment link copied to clipboard', icon: 'success', timer: 1500, buttons: false });
@@ -129,54 +313,12 @@ app.controller('PaymentLinkController', function ($scope, $http) {
 
     // ═══════════════════════════════════════════════════════════════════════
     //  SUBMIT — Easebuzz only
-    //  PAYU_TOGGLE: To re-enable PayU, uncomment the dispatcher and
-    //               AddonlinePaymentHistory function below
     // ═══════════════════════════════════════════════════════════════════════
     $scope.submitPayment = function () {
         if ($scope.isSubmitting) return;
+        clearAllErrors();
         $scope.submitEasebuzz();
     };
-
-    /* ═══════════════════════════════════════════════════════════════════════
-     *  PAYU SUBMIT — COMMENTED OUT (Easebuzz only mode)
-     *  PAYU_TOGGLE: Uncomment this entire block AND the dispatcher above
-     *               to re-enable PayU gateway
-     * ═══════════════════════════════════════════════════════════════════════
-     *
-     *  // ── Submit Dispatcher (supports both gateways) ───────────────────
-     *  // Replace the submitPayment above with this:
-     *  // $scope.submitPayment = function () {
-     *  //     if ($scope.isSubmitting) return;
-     *  //     if ($scope.paymentGateway === 'easebuzz') {
-     *  //         $scope.submitEasebuzz();
-     *  //     } else {
-     *  //         $scope.AddonlinePaymentHistory();
-     *  //     }
-     *  // };
-     *
-     *  // ── PayU Direct Submit ───────────────────────────────────────────
-     *  // $scope.AddonlinePaymentHistory = function () {
-     *  //     $http({
-     *  //         url: '/api/WebApi/AddonlinePaymentHistory',
-     *  //         method: 'post',
-     *  //         headers: {
-     *  //             'Content-type': 'application/json'
-     *  //         },
-     *  //         data: $scope.PaymentLinkObj
-     *  //     }).then(function (response) {
-     *  //         var resp = JSON.parse(response.data);
-     *  //         $scope.paymentLink = resp[0].link;
-     *  //         $scope.disableCopy = false;
-     *  //         swal({
-     *  //             title: "Success",
-     *  //             text: resp[0].Msg,
-     *  //             icon: "success",
-     *  //         });
-     *  //         $scope.GetPayments();
-     *  //     });
-     *  // };
-     *
-     * ═══════════════════════════════════════════════════════════════════════ */
 
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -184,13 +326,12 @@ app.controller('PaymentLinkController', function ($scope, $http) {
     //
     //  Step 1 → AddonlinePaymentHistory → t_OnlinePaymentHistory → TXN_ID
     //  Step 2 → CreatePaymentLink API → Easebuzz link created
-    //  Step 3 → UpdatePaymentLink → updates payment_link in DB with Easebuzz URL
+    //  Step 3 → UpdatePaymentLink → updates payment_link in DB
     // ═══════════════════════════════════════════════════════════════════════
     $scope.submitEasebuzz = function () {
         $scope.isSubmitting = true;
+        clearAllErrors();
 
-        // Notifications — hardcoded, all three always sent
-        // When UI is enabled, build this from $scope.notifyChannels
         var operations = [
             { type: 'sms', template: 'Default sms template' },
             { type: 'email', template: 'Default email template' },
@@ -212,19 +353,47 @@ app.controller('PaymentLinkController', function ($scope, $http) {
                 resp = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
             } catch (e) {
                 $scope.isSubmitting = false;
-                swal({ title: 'Error', text: 'Invalid response while generating TXN ID', icon: 'error' });
+                $scope.apiErrorMessage = 'Invalid response while generating TXN ID';
+                swal({ title: 'Error', text: $scope.apiErrorMessage, icon: 'error' });
                 return;
             }
 
-            if (!resp || !resp[0] || !resp[0].link) {
+            if (!resp || !resp[0]) {
                 $scope.isSubmitting = false;
-                swal({ title: 'Error', text: 'Failed to generate TXN ID', icon: 'error' });
+                $scope.apiErrorMessage = 'Failed to generate TXN ID';
+                swal({ title: 'Error', text: $scope.apiErrorMessage, icon: 'error' });
                 return;
             }
 
-            // Extract TXN_ID from link
-            var linkParts = resp[0].link.split('/');
-            var txnId = linkParts[linkParts.length - 1];
+            // ── Extract TXN_ID ──────────────────────────────────────────
+            // Works with both old SP (URL in link) and new SP (TXN_ID directly)
+            var txnId = '';
+            if (resp[0].TXN_ID) {
+                txnId = resp[0].TXN_ID;
+            } else if (resp[0].txn_id) {
+                txnId = resp[0].txn_id;
+            } else if (resp[0].link) {
+                // Old SP returns full URL — extract last segment
+                var linkParts = resp[0].link.split('/');
+                txnId = linkParts[linkParts.length - 1];
+            }
+
+            // Safety: if txnId still has URL parts, extract last segment
+            if (txnId && txnId.indexOf('/') > -1) {
+                var parts = txnId.split('/');
+                txnId = parts[parts.length - 1];
+            }
+
+            var fullName = resp[0].full_name || resp[0].Full_Name || '';
+
+            //console.log('[PaymentLink] Step 1 — TXN_ID:', txnId, 'Full Name:', fullName);
+
+            if (!txnId) {
+                $scope.isSubmitting = false;
+                $scope.apiErrorMessage = 'Failed to generate TXN ID';
+                swal({ title: 'Error', text: $scope.apiErrorMessage, icon: 'error' });
+                return;
+            }
 
             // ════════════════════════════════════════════════════════════
             //  STEP 2: Call Easebuzz CreatePaymentLink
@@ -239,7 +408,7 @@ app.controller('PaymentLinkController', function ($scope, $http) {
                 message: $scope.ebMessage || 'Payment Link',
                 expiry_date: $scope.ebExpiryDate || getDateString(30),
                 udf1: $scope.PaymentLinkObj.paymentType || '',
-                udf2: String($scope.PaymentLinkObj.user_id || ''),
+                udf2: fullName,
                 udf3: $scope.PaymentLinkObj.location || '',
                 udf4: $scope.PaymentLinkObj.state || '',
                 udf5: $scope.PaymentLinkObj.remarks || '',
@@ -252,63 +421,97 @@ app.controller('PaymentLinkController', function ($scope, $http) {
                 headers: { 'Content-type': 'application/json' },
                 data: payload
             }).then(function (ebResponse) {
+
                 var ebResp = ebResponse.data;
 
+                // ══════════════════════════════════════════════════════
+                //  DEBUG: Log full Easebuzz response to console
+                //  Open browser DevTools → Console tab to see this
+                // ══════════════════════════════════════════════════════
+                //console.log('[PaymentLink] Step 2 — Full Easebuzz Response:', JSON.stringify(ebResp, null, 2));
+
                 if (ebResp.success) {
-                    var ebData = ebResp.data.easebuzz_response || {};
-                    var ebLink = ebResp.data.payment_link || ebData.payment_url || ebData.short_url || '';
+                    clearAllErrors();
 
-                    $scope.paymentLink = ebLink;
-                    $scope.disableCopy = false;
+                    // ── Robust link extraction — tries every possible path ──
+                    var ebLink = extractPaymentLink(ebResp);
 
-                    // ════════════════════════════════════════════════════
-                    //  STEP 3: Update payment_link in DB with Easebuzz URL
-                    //
-                    //  TESTING:  Using .ashx handler (bypasses DLL issue)
-                    //  RELEASE:  Change URL to '/api/WebApi/UpdateEasebuzzLink'
-                    //            and remove UpdateEasebuzzLink.ashx from server
-                    $http({
-                        url: '/api/WebApi/UpdateEasebuzzLink',
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        data: { TXN_ID: txnId, payment_link: ebLink }
-                    }).then(function () {
+                    //console.log('[PaymentLink] Step 2 — Extracted Link:', ebLink);
+
+                    if (ebLink) {
+                        $scope.paymentLink = ebLink;
+                        $scope.disableCopy = false;
+
+                        // ════════════════════════════════════════════════
+                        //  STEP 3: Update payment_link in DB
+                        // ════════════════════════════════════════════════
+                        $http({
+                            url: '/api/WebApi/UpdateEasebuzzLink',
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            data: { TXN_ID: txnId, payment_link: ebLink }
+                        }).then(function () {
+                            $scope.GetPayments();
+                        }, function () {
+                            $scope.GetPayments();
+                        });
+
+                        $scope.isSubmitting = false;
+                        swal({
+                            title: 'Success',
+                            text: 'Payment link created!\n\n' + ebLink,
+                            icon: 'success'
+                        });
+                    } else {
+                        // ── Success but no link found in response ────────
+                        // Refresh list — link might have been saved by the API directly
                         $scope.GetPayments();
-                    }, function () {
-                        $scope.GetPayments();
-                    });
-
-                    $scope.isSubmitting = false;
-                    swal({
-                        title: 'Success',
-                        text: 'Payment link created & sent via SMS, Email, WhatsApp!\n\n' + ebLink,
-                        icon: 'success'
-                    });
-                } else {
-                    $scope.isSubmitting = false;
-                    var errMsg = ebResp.message || 'Something went wrong';
-                    if (ebResp.errors && ebResp.errors.length > 0) {
-                        errMsg = ebResp.errors.map(function (e) { return e.field + ': ' + e.message; }).join('\n');
+                        $scope.isSubmitting = false;
+                        console.warn('[PaymentLink] Success response but no link found. Full response:', ebResp);
+                        swal({
+                            title: 'Partial Success',
+                            text: 'Payment link was created but could not be retrieved from the response. Please copy from the list below.',
+                            icon: 'warning'
+                        });
                     }
-                    swal({ title: 'Error', text: errMsg, icon: 'error' });
+                } else {
+                    // ══════════════════════════════════════════════════════
+                    //  VALIDATION ERROR HANDLING
+                    // ══════════════════════════════════════════════════════
+                    $scope.isSubmitting = false;
+                    var errMsg = parseAndSetErrors(ebResp);
+                    swal({ title: 'Validation Error', text: errMsg, icon: 'error' });
                 }
 
             }, function (ebError) {
                 $scope.isSubmitting = false;
-                var errMsg = 'Failed to create Easebuzz payment link';
-                if (ebError.data && ebError.data.message) errMsg = ebError.data.message;
+                console.error('[PaymentLink] Step 2 — HTTP Error:', ebError);
+
+                var errMsg = 'Failed to create payment link.';
+                if (ebError.data) {
+                    errMsg = parseAndSetErrors(ebError.data);
+                } else if (ebError.status === 0) {
+                    errMsg = 'Unable to connect to payment gateway. Please check your internet connection.';
+                } else if (ebError.status === 408 || ebError.status === 504) {
+                    errMsg = 'Payment gateway request timed out. Please try again.';
+                } else if (ebError.status >= 500) {
+                    errMsg = 'Payment gateway server error. Please try again later.';
+                }
+                $scope.apiErrorMessage = errMsg;
                 swal({ title: 'Error', text: errMsg, icon: 'error' });
             });
 
         }, function (error) {
             $scope.isSubmitting = false;
-            swal({ title: 'Error', text: 'Failed to save payment record', icon: 'error' });
+            console.error('[PaymentLink] Step 1 — HTTP Error:', error);
+            $scope.apiErrorMessage = 'Failed to save payment record';
+            swal({ title: 'Error', text: $scope.apiErrorMessage, icon: 'error' });
         });
     };
 
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  DATA LOADERS — gateway detection kept for old PayU records in list
+    //  DATA LOADERS
     // ═══════════════════════════════════════════════════════════════════════
 
     $scope.paramGetPayments = { 'uid': $scope.uid, 'suffix': $scope.txnsuffix };
@@ -323,13 +526,14 @@ app.controller('PaymentLinkController', function ($scope, $http) {
             try {
                 var list = typeof response.data === 'string' ? JSON.parse(response.data) : response.data;
                 if (Array.isArray(list)) {
-                    // Detect gateway from payment link URL
                     for (var i = 0; i < list.length; i++) {
                         var link = (list[i].link || list[i].payment_link || '').toLowerCase();
                         if (link.indexOf('easebuzz') > -1 || link.indexOf('easy_collect') > -1 || link.indexOf('easycollect') > -1) {
                             list[i].gateway = 'Easebuzz';
-                        } else {
+                        } else if (link) {
                             list[i].gateway = 'PayU';
+                        } else {
+                            list[i].gateway = '-';
                         }
                     }
                     $scope.CreatedPaymentLink = list;
